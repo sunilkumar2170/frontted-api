@@ -1,7 +1,17 @@
 import axios, { AxiosError } from 'axios'
 import type { AnalysisResult, ApiErrorShape, Coordinate } from '../types/analysis'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://10.1.75.53:3213'
+const getApiUrl = () => {
+  if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL
+  if (typeof window !== 'undefined' && window.location && window.location.hostname) {
+    const protocol = window.location.protocol
+    const hostname = window.location.hostname
+    return `${protocol}//${hostname}:3213`
+  }
+  return 'http://10.1.75.53:3213'
+}
+
+const API_URL = getApiUrl()
 
 const client = axios.create({
   baseURL: API_URL,
@@ -76,17 +86,23 @@ export function isApiError(value: unknown): value is ApiErrorShape {
 }
 
 export async function checkHealth(): Promise<boolean> {
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      const res = await client.get('/analyzeContour', { timeout: 10_000 })
-      if (res.status === 200 || (res.data && !!res.data.message)) {
+      const res = await client.get('/health', { timeout: 8_000 })
+      if (res.status === 200) {
         return true
       }
     } catch (error) {
       if (axios.isAxiosError(error) && error.response) {
         return true
       }
-      if (attempt === 0) {
+      try {
+        const res2 = await client.get('/analyzeContour', { timeout: 8_000 })
+        if (res2.status === 200) return true
+      } catch (e2) {
+        if (axios.isAxiosError(e2) && e2.response) return true
+      }
+      if (attempt < 2) {
         await new Promise((r) => setTimeout(r, 1000))
       }
     }
